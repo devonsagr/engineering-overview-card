@@ -1,4 +1,4 @@
-import { useMemo, useState, type ElementType, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ElementType, type ReactNode } from "react";
 import {
   Archive,
   ArrowDown,
@@ -77,7 +77,17 @@ type ObjectRecord = {
 
 type LoopView = "one-shot" | "iteration";
 type LoopUnitStatus = "verified" | "evidence" | "active" | "waiting" | "untracked";
-type LoopUnit = { label: string; status: LoopUnitStatus; note: string; evidence: string; registered: boolean };
+type LoopUnit = {
+  label: string;
+  status: LoopUnitStatus;
+  note: string;
+  evidence: string;
+  registered: boolean;
+  documentPaths: string[];
+  codePaths: string[];
+  requirements: CardMonitor["requirements"];
+  history: CardHistoryRecord[];
+};
 type LoopSnapshot = {
   modeLabel: string;
   modeTone: Tone;
@@ -264,35 +274,53 @@ function buildLoopSnapshot(record: ObjectRecord): LoopSnapshot {
   const hasCodeLine = record.work.branch !== "—";
   const hasHistory = record.history.length > 0;
   const hasAcceptance = Boolean(record.work.acceptance && !record.work.acceptance.includes("未登记"));
+  const pickDocuments = (...needles: string[]) => record.documentPaths.filter((path) => needles.some((needle) => path.includes(needle)));
+  const pickRequirements = (...ids: string[]) => record.requirements.filter((requirement) => ids.includes(requirement.id));
   const units: LoopUnit[] = record.id === "card-projects"
     ? [
         {
           label: "项目地图 / 单对象档案",
           status: "verified",
           registered: true,
-          note: "把全局、产品、卡片和平级工程分开；默认只展开一个对象的完整档案。",
+          note: "把小库全局、仪表盘产品、卡片模块和平级工程分开；点一个对象，只展开这一份档案。",
           evidence: "定向测试 · 地图与档案断言",
+          documentPaths: pickDocuments("当前产品路线图", "当前交接", "15_项目层级"),
+          codePaths: ["src/engineering/EngineeringControlRoom.tsx", "src/engineering/cardMonitoringData.ts"],
+          requirements: pickRequirements("REQ-BOUNDARY", "REQ-READ-ONLY"),
+          history: record.history.slice(0, 2),
         },
         {
           label: "首轮 / 后续迭代分开看",
           status: "verified",
           registered: true,
-          note: "One-shot 看路线和检查点；后续迭代看当前任务、分支和工作树。",
+          note: "One-shot 看路线、功能单元和文档入口；后续迭代看分区、当前任务、分支、检查和交接。",
           evidence: "定向测试 · Loop 切换断言",
+          documentPaths: pickDocuments("04_项目雷达", "11_看板", "12_长期"),
+          codePaths: ["src/engineering/EngineeringControlRoom.tsx", "src/engineering/EngineeringControlRoom.test.tsx"],
+          requirements: pickRequirements("REQ-TWO-LAYERS", "REQ-MEMORY"),
+          history: record.history.slice(2, 4),
         },
         {
           label: "工程现场 / 冲突隔离",
           status: "verified",
           registered: true,
-          note: "按目录展示工作树、未提交现场、跨卡提交和隔离规则，不把混合提交拆成假历史。",
+          note: "按真实目录展示工作树、未提交现场、跨卡提交和隔离规则；混合提交保留原样，不拆成假历史。",
           evidence: "定向测试 · 现场与冲突断言",
+          documentPaths: pickDocuments("11_看板", "15_项目层级", "当前交接"),
+          codePaths: ["src/engineering/engineering.css", "src/engineering/cardMonitoringData.ts"],
+          requirements: pickRequirements("REQ-BOUNDARY", "REQ-ISOLATION"),
+          history: record.history.slice(4),
         },
         {
           label: "用户验收 / 真实源接入",
           status: "waiting",
           registered: true,
-          note: "等待你验收阅读结构；GitHub、Linear、CI 仍保持快照边界，没有冒充实时同步。",
+          note: "等待你验收阅读结构；GitHub、Linear、CI 仍保持快照边界，不把静态页面冒充成实时同步。",
           evidence: "本地 6/6 + build；等待用户验收",
+          documentPaths: pickDocuments("当前交接", "历史日志"),
+          codePaths: [],
+          requirements: pickRequirements("REQ-READ-ONLY"),
+          history: [],
         },
       ]
     : [
@@ -300,29 +328,45 @@ function buildLoopSnapshot(record: ObjectRecord): LoopSnapshot {
           label: "需求 / 头脑风暴",
           status: hasRequirements ? "evidence" : "untracked",
           registered: false,
-          note: hasRequirements ? `${record.requirements.length} 条原文需求已登记；还需要拆成首轮工作单元。` : "当前对象没有可读取的需求原文。",
-          evidence: hasRequirements ? "来源可回看；尚未登记功能单元" : "没有需求原文证据",
+          note: hasRequirements ? `${record.requirements.length} 条原文需求已登记；先把它们落到可验收的首轮工作单元。` : "当前对象没有可读取的需求原文。",
+          evidence: hasRequirements ? "原文可回看；尚未登记功能单元" : "没有需求原文证据",
+          documentPaths: record.documentPaths.slice(0, 1),
+          codePaths: [],
+          requirements: record.requirements.slice(0, 2),
+          history: [],
         },
         {
           label: "架构 / 唯一路线",
           status: hasDocuments ? "evidence" : "untracked",
           registered: false,
-          note: hasDocuments ? `${record.documentPaths.length} 个文档入口可回看；不在此处复制文档正文。` : "当前对象没有单独登记架构或路线入口。",
+          note: hasDocuments ? `${record.documentPaths.length} 个文档入口可回看；正文仍以项目 Markdown 为准。` : "当前对象没有单独登记架构或路线入口。",
           evidence: hasDocuments ? "文档入口可回看；尚未登记功能单元" : "没有架构入口证据",
+          documentPaths: record.documentPaths.slice(1),
+          codePaths: [],
+          requirements: record.requirements.slice(2),
+          history: [],
         },
         {
           label: "功能单元 / 依赖",
           status: "untracked",
           registered: false,
-          note: "当前静态快照尚未登记可计算的首轮工作单元和依赖。",
+          note: "当前静态快照尚未把路线拆成可计算的功能单元、依赖和完成条件。",
           evidence: "未登记验收证据",
+          documentPaths: [],
+          codePaths: [],
+          requirements: [],
+          history: [],
         },
         {
           label: "分区实施 / 代码线",
           status: hasCodeLine ? "active" : "untracked",
           registered: false,
-          note: hasCodeLine ? `当前能看到 ${record.work.branch} 和对应工作树。` : "没有本地分支或工作树证据。",
+          note: hasCodeLine ? `当前能看到 ${record.work.branch} 和对应工作树；这只是现场证据，不等于单元完成。` : "没有本地分支或工作树证据。",
           evidence: hasCodeLine ? "工程现场可回看；不等于单元完成" : "没有分支证据",
+          documentPaths: [],
+          codePaths: record.sourcePaths,
+          requirements: [],
+          history: record.history.slice(0, 4),
         },
         {
           label: "集成 / 首版验收",
@@ -330,6 +374,10 @@ function buildLoopSnapshot(record: ObjectRecord): LoopSnapshot {
           registered: false,
           note: hasAcceptance ? record.work.acceptance ?? "等待验收" : "当前快照不能证明首轮已经集成或通过用户验收。",
           evidence: hasAcceptance ? "有验收文字；尚未登记功能单元" : "没有验收证据",
+          documentPaths: record.documentPaths.slice(-1),
+          codePaths: [],
+          requirements: [],
+          history: record.history.slice(0, 2),
         },
       ];
   const registeredUnits = units.filter((unit) => unit.registered);
@@ -514,6 +562,82 @@ function HistoryTable({ history }: { history: CardHistoryRecord[] }) {
   );
 }
 
+function LoopRequirementList({ requirements }: { requirements: CardMonitor["requirements"] }) {
+  if (requirements.length === 0) return <span className="engineering-empty-value">本分区没有单独登记的用户原文；回到对象档案继续核对。</span>;
+  return (
+    <div className="engineering-loop-requirement-list">
+      {requirements.map((requirement) => (
+        <article className="engineering-loop-requirement" key={requirement.id}>
+          <div className="engineering-loop-trace-row__top">
+            <code>{requirement.id}</code>
+            <StatusMark tone={requirement.tone}>{requirement.status}</StatusMark>
+          </div>
+          <p className="engineering-loop-requirement__original">原文：{requirement.original}</p>
+          <p>必须满足：{requirement.must}</p>
+          <small>落点：{requirement.landing} · 来源：{requirement.source}</small>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function LoopHistoryList({ history }: { history: CardHistoryRecord[] }) {
+  if (history.length === 0) return <span className="engineering-empty-value">本分区没有可回看的 Commit 快照；不在此处补写假历史。</span>;
+  return (
+    <ol className="engineering-loop-history-list">
+      {history.map((item) => (
+        <li key={item.hash}>
+          <div className="engineering-loop-trace-row__top">
+            <span>{item.date}</span>
+            <code>{item.hash}</code>
+            <span className="engineering-history-kind" data-kind={item.kind}>{HISTORY_KIND_LABELS[item.kind]}</span>
+          </div>
+          <strong>{item.title}</strong>
+          <small>{item.raw}</small>
+          <p>{item.note}</p>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function LoopUnitLedger({ unit, index }: { unit: LoopUnit; index: number }) {
+  return (
+    <details className="engineering-loop-unit" data-status={unit.status} data-registered={unit.registered} open={index === 0}>
+      <summary>
+        <span className="engineering-loop-unit__index">{String(index + 1).padStart(2, "0")}</span>
+        <span className="engineering-loop-unit__title"><strong>{unit.label}</strong><small>{unit.registered ? "进入首轮进度分母" : "资料上下文 · 不进入首轮进度分母"} · 文档 {unit.documentPaths.length} · 原文 {unit.requirements.length} · Git {unit.history.length}</small></span>
+        <StatusMark tone={LOOP_STATUS_TONES[unit.status]}>{LOOP_STATUS_LABELS[unit.status]}</StatusMark>
+        <ChevronDown className="engineering-loop-unit__chevron" size={16} aria-hidden="true" />
+      </summary>
+      <div className="engineering-loop-unit__body">
+        <div className="engineering-loop-unit__intro">
+          <p>{unit.note}</p>
+          <small>验收 / 证据：{unit.evidence}</small>
+        </div>
+        <div className="engineering-loop-trace-grid">
+          <section className="engineering-loop-trace-block">
+            <div className="engineering-loop-trace-heading"><BookOpen size={14} aria-hidden="true" /><h4>Markdown / 交接位置</h4></div>
+            <PathList paths={unit.documentPaths} empty="本分区没有单独登记文档入口" />
+          </section>
+          <section className="engineering-loop-trace-block">
+            <div className="engineering-loop-trace-heading"><Code2 size={14} aria-hidden="true" /><h4>代码入口 / 文件范围</h4></div>
+            <PathList paths={unit.codePaths} empty="本分区没有单独代码入口" />
+          </section>
+          <section className="engineering-loop-trace-block">
+            <div className="engineering-loop-trace-heading"><MessageSquare size={14} aria-hidden="true" /><h4>用户原文 / 必须满足</h4></div>
+            <LoopRequirementList requirements={unit.requirements} />
+          </section>
+          <section className="engineering-loop-trace-block">
+            <div className="engineering-loop-trace-heading"><GitCommitHorizontal size={14} aria-hidden="true" /><h4>Git 快照 / 这条历史说明什么</h4></div>
+            <LoopHistoryList history={unit.history} />
+          </section>
+        </div>
+      </div>
+    </details>
+  );
+}
+
 function WorkFacts({ work }: { work: CardWorkSnapshot }) {
   const fields = [
     { label: "任务", value: work.task ?? "未单独登记" },
@@ -586,13 +710,16 @@ function LoopMonitor({ record }: { record: ObjectRecord }) {
               <div><span>最近检查点</span><code>{snapshot.checkpoint}</code><p>{snapshot.checkpointSource}</p></div>
               <div><span>当前下一步</span><strong>{snapshot.next}</strong><p>完成一个单元后再写一次交接，不按聊天消息频率刷新。</p></div>
             </div>
-            <ol className="engineering-loop-roadmap">
-              {snapshot.units.map((unit, index) => (
-                <li key={unit.label} data-status={unit.status} data-registered={unit.registered}>
-                  <span className="engineering-loop-roadmap__index">{String(index + 1).padStart(2, "0")}</span>
-                  <div><div className="engineering-loop-roadmap__top"><strong>{unit.label}</strong><StatusMark tone={LOOP_STATUS_TONES[unit.status]}>{LOOP_STATUS_LABELS[unit.status]}</StatusMark></div><p>{unit.note}</p><small className="engineering-loop-roadmap__evidence">证据：{unit.evidence}</small></div>
-                </li>
-              ))}
+            <section className="engineering-loop-document-index" aria-label="当前对象的路线与架构文档入口">
+              <div className="engineering-loop-document-index__heading">
+                <div><span className="engineering-eyebrow">DOCUMENT-LED ROUTE</span><h3>本对象路线 / 架构入口</h3></div>
+                <strong>{record.documentPaths.length} 个 Markdown 入口</strong>
+              </div>
+              <p>这里列真实文档位置；首轮不是一段概括文字。打开每个功能单元，还能看到它对应的用户原文、代码入口和 Git 验收证据。</p>
+              <PathList paths={record.documentPaths} empty="当前对象没有登记路线或架构文档" />
+            </section>
+            <ol className="engineering-loop-ledger">
+              {snapshot.units.map((unit, index) => <li key={unit.label}><LoopUnitLedger unit={unit} index={index} /></li>)}
             </ol>
             <p className="engineering-loop-disclaimer"><ShieldCheck size={15} aria-hidden="true" />进度只统计“已登记功能单元”中有验收证据的单元；没有登记分母时显示“未计算”，不会用 Commit 数量代替完成度。</p>
           </div>
@@ -617,7 +744,24 @@ function LoopMonitor({ record }: { record: ObjectRecord }) {
                 <p>下一步：{snapshot.next}</p>
               </aside>
             </div>
-            <p className="engineering-loop-disclaimer"><GitCommitHorizontal size={15} aria-hidden="true" />迭代现场来自当前工作树和 Git 快照；详细的 PR、Review、CI、未提交文件仍在上方当前档案和下方工程现场查看。</p>
+            <div className="engineering-iteration-trace">
+              <section className="engineering-iteration-trace__block">
+                <div className="engineering-loop-trace-heading"><MessageSquare size={14} aria-hidden="true" /><div><span className="engineering-eyebrow">REQUIREMENT TRACE</span><h4>这个对象的原始要求</h4></div></div>
+                <LoopRequirementList requirements={record.requirements} />
+              </section>
+              <section className="engineering-iteration-trace__block">
+                <div className="engineering-loop-trace-heading"><History size={14} aria-hidden="true" /><div><span className="engineering-eyebrow">ITERATION HISTORY</span><h4>这个对象的迭代历史</h4></div></div>
+                <LoopHistoryList history={record.history} />
+              </section>
+              <section className="engineering-iteration-trace__block engineering-iteration-trace__block--wide">
+                <div className="engineering-loop-trace-heading"><BookOpen size={14} aria-hidden="true" /><div><span className="engineering-eyebrow">AUTHORITATIVE LOCATIONS</span><h4>文档与代码落点</h4></div></div>
+                <div className="engineering-iteration-trace__paths">
+                  <div><span>Markdown / 交接</span><PathList paths={record.documentPaths} empty="没有登记文档入口" /></div>
+                  <div><span>代码入口</span><PathList paths={record.sourcePaths} empty="没有登记代码入口" /></div>
+                </div>
+              </section>
+            </div>
+            <p className="engineering-loop-disclaimer"><GitCommitHorizontal size={15} aria-hidden="true" />迭代现场按对象保留原始要求、分区历史、文档位置和代码入口；PR、Review、CI、未提交文件仍在上方当前档案和下方工程现场查看。</p>
           </div>
         )}
       </div>
@@ -678,6 +822,8 @@ function ProjectMap({
   queryActive: boolean;
   scope: ScopeId;
 }) {
+  const [productOpen, setProductOpen] = useState(true);
+  const [independentOpen, setIndependentOpen] = useState(false);
   const visibleGroups = GROUP_ORDER
     .map((group) => ({ group, records: cards.filter((record) => record.group === group) }))
     .filter((item) => item.records.length > 0);
@@ -707,41 +853,69 @@ function ProjectMap({
           {showProduct ? (
             <section className="engineering-map-branch engineering-map-branch--product" aria-labelledby="product-tree-title">
               <div className="engineering-map-branch__head">
-                <div className="engineering-map-branch__title"><ArrowRight size={15} aria-hidden="true" /><div><span>产品树</span><h3 id="product-tree-title">个人 AI 仪表盘</h3></div></div>
+                <button
+                  type="button"
+                  className="engineering-map-branch__head-toggle"
+                  aria-expanded={productOpen}
+                  aria-controls="engineering-product-tree"
+                  aria-label={`${productOpen ? "收起" : "展开"}个人 AI 仪表盘卡片`}
+                  onClick={() => setProductOpen((open) => !open)}
+                >
+                  <div className="engineering-map-branch__title"><ArrowRight size={15} aria-hidden="true" /><div><span>产品树 · L1</span><h3 id="product-tree-title">个人 AI 仪表盘</h3></div></div>
+                  <ChevronDown className={productOpen ? "" : "is-collapsed"} size={16} aria-hidden="true" />
+                </button>
                 <code>D:/AAAcodex项目/仪表盘</code>
               </div>
-              {dashboard ? <div className="engineering-map-branch__root"><ProjectNode record={dashboard} selected={selectedId === dashboard.id} onSelect={onSelect} /></div> : null}
-              <div className="engineering-map-lanes">
-                {visibleGroups.map(({ group, records }) => {
-                  const meta = GROUP_META[group];
-                  const Icon = meta.icon;
-                  return (
-                    <section className="engineering-map-lane" key={group} aria-labelledby={"map-lane-" + group}>
-                      <div className="engineering-map-lane__head">
-                        <Icon size={14} aria-hidden="true" />
-                        <div><h4 id={"map-lane-" + group}>{meta.label}</h4><span>{meta.note}</span></div>
-                        <strong>{records.length}</strong>
-                      </div>
-                      <div className="engineering-map-node-grid">
-                        {records.map((record) => <ProjectNode key={record.id} record={record} selected={selectedId === record.id} onSelect={onSelect} />)}
-                      </div>
-                    </section>
-                  );
-                })}
-              </div>
-              {visibleGroups.length === 0 ? <p className="engineering-map-empty">当前筛选下没有卡片；地图只保留产品根节点。</p> : null}
+              {productOpen ? (
+                <div id="engineering-product-tree">
+                  {dashboard ? <div className="engineering-map-branch__root"><ProjectNode record={dashboard} selected={selectedId === dashboard.id} onSelect={onSelect} /></div> : null}
+                  <div className="engineering-map-lanes">
+                    {visibleGroups.map(({ group, records }) => {
+                      const meta = GROUP_META[group];
+                      const Icon = meta.icon;
+                      return (
+                        <section className="engineering-map-lane" key={group} aria-labelledby={"map-lane-" + group}>
+                          <div className="engineering-map-lane__head">
+                            <Icon size={14} aria-hidden="true" />
+                            <div><h4 id={"map-lane-" + group}>{meta.label}</h4><span>{meta.note}</span></div>
+                            <strong>{records.length}</strong>
+                          </div>
+                          <div className="engineering-map-node-grid">
+                            {records.map((record) => <ProjectNode key={record.id} record={record} selected={selectedId === record.id} onSelect={onSelect} />)}
+                          </div>
+                        </section>
+                      );
+                    })}
+                  </div>
+                  {visibleGroups.length === 0 ? <p className="engineering-map-empty">当前筛选下没有卡片；地图只保留产品根节点。</p> : null}
+                </div>
+              ) : <p className="engineering-map-empty engineering-map-empty--collapsed">L1 已折叠；展开后查看仪表盘产品节点和各卡片分区。</p>}
             </section>
           ) : null}
           {showIndependent ? (
             <section className="engineering-map-branch engineering-map-branch--independent" aria-labelledby="independent-tree-title">
               <div className="engineering-map-branch__head">
-                <div className="engineering-map-branch__title"><ArrowRight size={15} aria-hidden="true" /><div><span>平级工程</span><h3 id="independent-tree-title">不进入仪表盘卡片仓库</h3></div></div>
+                <button
+                  type="button"
+                  className="engineering-map-branch__head-toggle"
+                  aria-expanded={independentOpen}
+                  aria-controls="engineering-independent-tree"
+                  aria-label={`${independentOpen ? "收起" : "展开"}平级工程`}
+                  onClick={() => setIndependentOpen((open) => !open)}
+                >
+                  <div className="engineering-map-branch__title"><ArrowRight size={15} aria-hidden="true" /><div><span>平级工程 · L1</span><h3 id="independent-tree-title">不进入仪表盘卡片仓库</h3></div></div>
+                  <ChevronDown className={independentOpen ? "" : "is-collapsed"} size={16} aria-hidden="true" />
+                </button>
                 <code>小库 / 04_Vibecoding项目</code>
               </div>
-              <div className="engineering-map-node-grid engineering-map-node-grid--independent">
-                {independent.map((record) => <ProjectNode key={record.id} record={record} selected={selectedId === record.id} onSelect={onSelect} />)}
-              </div>
-              {independent.length === 0 ? <p className="engineering-map-empty">当前筛选下没有匹配的平级工程。</p> : null}
+              {independentOpen ? (
+                <div id="engineering-independent-tree">
+                  <div className="engineering-map-node-grid engineering-map-node-grid--independent">
+                    {independent.map((record) => <ProjectNode key={record.id} record={record} selected={selectedId === record.id} onSelect={onSelect} />)}
+                  </div>
+                  {independent.length === 0 ? <p className="engineering-map-empty">当前筛选下没有匹配的平级工程。</p> : null}
+                </div>
+              ) : <p className="engineering-map-empty engineering-map-empty--collapsed">平级工程默认收起；它们拥有自己的仓库、分支和验收，不进入仪表盘卡片时间线。</p>}
             </section>
           ) : null}
         </div>
@@ -970,6 +1144,29 @@ export function EngineeringControlRoom() {
   const [scope, setScope] = useState<ScopeId>("all");
   const [activeSection, setActiveSection] = useState<SectionId>("overview");
   const [selectedId, setSelectedId] = useState("dashboard");
+  useEffect(() => {
+    const updateActiveSection = () => {
+      const targets = COMPACT_NAV_ITEMS.map((item) => {
+        const targetId = item.id === "overview" ? "engineering-overview" : "engineering-" + item.id;
+        const element = document.getElementById(targetId);
+        const rect = element?.getBoundingClientRect();
+        return { id: item.id, top: rect?.top ?? Number.POSITIVE_INFINITY, bottom: rect?.bottom ?? Number.NEGATIVE_INFINITY };
+      });
+      const hasLayout = targets.some((target) => Number.isFinite(target.top) && (target.top !== 0 || target.bottom !== 0));
+      if (!hasLayout) return;
+      const marker = Math.min(180, Math.max(120, window.innerHeight * 0.28));
+      const passed = targets.filter((target) => target.top <= marker && target.bottom > 0);
+      const next = passed.length > 0 ? passed[passed.length - 1].id : "overview";
+      setActiveSection((current) => current === next ? current : next);
+    };
+    updateActiveSection();
+    window.addEventListener("scroll", updateActiveSection, { passive: true });
+    window.addEventListener("resize", updateActiveSection);
+    return () => {
+      window.removeEventListener("scroll", updateActiveSection);
+      window.removeEventListener("resize", updateActiveSection);
+    };
+  }, []);
   const normalizedQuery = query.trim();
   const filteredRecords = useMemo(
     () => ALL_OBJECT_RECORDS.filter((record) => scopeMatches(record, scope) && (!normalizedQuery || matchesQuery(record, normalizedQuery))),
@@ -1002,6 +1199,7 @@ export function EngineeringControlRoom() {
     { id: "runtime", label: "运行时 / 扩展" },
     { id: "independent", label: "平级工程" },
   ];
+  const activeNavItem = COMPACT_NAV_ITEMS.find((item) => item.id === activeSection) ?? COMPACT_NAV_ITEMS[0];
 
   return (
     <div className="engineering-app" data-engineering-theme={theme}>
@@ -1035,6 +1233,12 @@ export function EngineeringControlRoom() {
               );
             })}
           </nav>
+          <div className="engineering-sidebar__current" aria-live="polite">
+            <span className="engineering-sidebar__current-label">当前阅读</span>
+            <strong>{activeNavItem.label}</strong>
+            <small>{activeNavItem.note}</small>
+            <div><span>当前对象</span><strong>{selectedRecord?.title ?? "—"}</strong></div>
+          </div>
           <div className="engineering-sidebar__tree">
             <div><FolderTree size={14} aria-hidden="true" /><strong>小库全局</strong><span>1</span></div>
             <div className="engineering-sidebar__tree-indent">
@@ -1047,7 +1251,7 @@ export function EngineeringControlRoom() {
           </div>
           <div className="engineering-sidebar__bottom">
             <div className="engineering-sidebar__stamp"><CircleDot size={14} aria-hidden="true" /><div><strong>本地快照</strong><span>{SNAPSHOT_META.date}</span></div></div>
-            <p>工程总览只读本地事实；GitHub / Linear 尚未连接。</p>
+            <p>工程总览只读本地事实；GitHub 仅保留发布快照，Linear 不在本页实时读取。</p>
           </div>
         </aside>
         <main className="engineering-main" id="engineering-main">
@@ -1055,8 +1259,8 @@ export function EngineeringControlRoom() {
             <div className="engineering-topbar__path"><span>小库全局</span><ChevronRight size={14} aria-hidden="true" /><strong>个人 AI 仪表盘</strong><ChevronRight size={14} aria-hidden="true" /><span>工程总览卡</span></div>
             <div className="engineering-topbar__actions">
               <span className="engineering-source-chip engineering-source-chip--local"><Code2 size={13} aria-hidden="true" />本地 Git</span>
-              <span className="engineering-source-chip"><GitPullRequest size={13} aria-hidden="true" />GitHub · 未连接</span>
-              <span className="engineering-source-chip"><Target size={13} aria-hidden="true" />Linear · 未连接</span>
+              <span className="engineering-source-chip"><GitPullRequest size={13} aria-hidden="true" />GitHub · 发布快照</span>
+              <span className="engineering-source-chip"><Target size={13} aria-hidden="true" />Linear · 未接入</span>
               <button type="button" className="engineering-theme-button" aria-label={theme === "day" ? "切换到夜间主题" : "切换到日间主题"} onClick={() => setTheme(theme === "day" ? "night" : "day")}>
                 {theme === "day" ? <Moon size={16} aria-hidden="true" /> : <Sun size={16} aria-hidden="true" />}
                 <span>{theme === "day" ? "夜间" : "日间"}</span>
@@ -1117,8 +1321,8 @@ export function EngineeringControlRoom() {
            </section>
            <ConflictSection />
            <footer className="engineering-footer">
-            <div><span className="engineering-footer__mark"><Sparkles size={14} aria-hidden="true" /></span><strong>工程总览卡 v0.8</strong><span>地图优先 · 单对象档案 · 证据进度</span></div>
-            <p>本页是只读工程总览；不替代项目 Markdown、Git，也不冒充尚未连接的 GitHub / Linear。</p>
+            <div><span className="engineering-footer__mark"><Sparkles size={14} aria-hidden="true" /></span><strong>工程总览卡 v0.9</strong><span>地图优先 · 文档台账 · 证据进度</span></div>
+            <p>本页是只读工程总览；正文仍以项目 Markdown 和 Git 为准，外部服务只作为发布或未来接入的旁路证据。</p>
           </footer>
         </main>
       </div>

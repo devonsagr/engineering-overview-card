@@ -14,8 +14,8 @@ it("uses one engineering overview card with a map-first reading order", () => {
   expect(screen.getByRole("heading", { name: "只看真正需要处理的冲突", level: 2 })).toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: "先看输入怎么流，再看每张卡各自负责什么", level: 2 })).not.toBeInTheDocument();
   expect(screen.getByText("这张卡只管工程现场；总体信息流、知识沉淀和今日安排由其他卡片负责。")).toBeInTheDocument();
-  expect(screen.getByText("GitHub · 未连接")).toBeInTheDocument();
-  expect(screen.getByText("Linear · 未连接")).toBeInTheDocument();
+  expect(screen.getByText("GitHub · 发布快照")).toBeInTheDocument();
+  expect(screen.getByText("Linear · 未接入")).toBeInTheDocument();
 });
 
 it("shows the project folder map and opens only the selected object archive", async () => {
@@ -25,6 +25,15 @@ it("shows the project folder map and opens only the selected object archive", as
   const map = screen.getByRole("region", { name: "先看项目在哪里，再看它现在怎么走" });
   expect(within(map).getByRole("button", { name: "个人 AI 仪表盘，产品项目" })).toBeInTheDocument();
   expect(within(map).getByRole("button", { name: "日记接入，已接入卡片" })).toBeInTheDocument();
+  const productToggle = within(map).getByRole("button", { name: "收起个人 AI 仪表盘卡片" });
+  expect(productToggle).toHaveAttribute("aria-expanded", "true");
+  await user.click(productToggle);
+  expect(productToggle).toHaveAttribute("aria-expanded", "false");
+  expect(within(map).queryByRole("button", { name: "日记接入，已接入卡片" })).not.toBeInTheDocument();
+  await user.click(within(map).getByRole("button", { name: "展开个人 AI 仪表盘卡片" }));
+  expect(within(map).getByRole("button", { name: "日记接入，已接入卡片" })).toBeInTheDocument();
+  const independentToggle = within(map).getByRole("button", { name: "展开平级工程" });
+  expect(independentToggle).toHaveAttribute("aria-expanded", "false");
   expect(within(map).getAllByText("D:/AAAcodex项目/仪表盘").length).toBeGreaterThanOrEqual(1);
   expect(within(map).getByText("D:/AAAcodex项目/仪表盘-card-diary")).toBeInTheDocument();
 
@@ -73,7 +82,10 @@ it("separates the one-shot route from the real iteration snapshot", async () => 
   expect(within(loop).getByText("3/4 · 75%")).toBeInTheDocument();
   expect(within(loop).getByText(/有验收证据的已完成功能单元 ÷ 已登记功能单元/)).toBeInTheDocument();
   expect(within(loop).getByText("项目地图 / 单对象档案")).toBeInTheDocument();
-  expect(within(loop).getByText("证据：定向测试 · 地图与档案断言")).toBeInTheDocument();
+  expect(within(loop).getByText("验收 / 证据：定向测试 · 地图与档案断言")).toBeInTheDocument();
+  expect(within(loop).getByText("本对象路线 / 架构入口")).toBeInTheDocument();
+  expect(within(loop).getAllByText("docs/project/架构/卡片/04_项目雷达.md").length).toBeGreaterThanOrEqual(2);
+  expect(within(loop).getAllByText("用户原文 / 必须满足").length).toBeGreaterThan(0);
 });
 
 it("filters the map and selected archive without changing source labels, and supports the reading theme", async () => {
