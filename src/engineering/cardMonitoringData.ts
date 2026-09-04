@@ -785,3 +785,4 @@ export const ISOLATION_RULES = [
   { number: "03", label: "一个逻辑改变 / 一个提交", detail: "Commit 是可回溯快照；不要把雷达、随手记和安装脚本顺手塞进同一个快照。" },
   { number: "04", label: "检查后再合入", detail: "先跑本地测试、类型检查和构建，再由 PR / 评审 / CI 决定是否进入主线。" },
 ];
+
