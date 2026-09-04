@@ -76,14 +76,15 @@ type ObjectRecord = {
 };
 
 type LoopView = "one-shot" | "iteration";
-type LoopUnitStatus = "evidence" | "active" | "waiting" | "untracked";
-type LoopUnit = { label: string; status: LoopUnitStatus; note: string };
+type LoopUnitStatus = "verified" | "evidence" | "active" | "waiting" | "untracked";
+type LoopUnit = { label: string; status: LoopUnitStatus; note: string; evidence: string; registered: boolean };
 type LoopSnapshot = {
   modeLabel: string;
   modeTone: Tone;
   stage: string;
   progress: string;
   progressNote: string;
+  progressFormula: string;
   checkpoint: string;
   checkpointSource: string;
   next: string;
@@ -110,6 +111,7 @@ const HISTORY_KIND_LABELS: Record<CardHistoryRecord["kind"], string> = {
 };
 
 const LOOP_STATUS_LABELS: Record<LoopUnitStatus, string> = {
+  verified: "已验收",
   evidence: "有资料",
   active: "当前现场",
   waiting: "待验收",
@@ -117,6 +119,7 @@ const LOOP_STATUS_LABELS: Record<LoopUnitStatus, string> = {
 };
 
 const LOOP_STATUS_TONES: Record<LoopUnitStatus, Tone> = {
+  verified: "teal",
   evidence: "teal",
   active: "amber",
   waiting: "amber",
@@ -261,44 +264,93 @@ function buildLoopSnapshot(record: ObjectRecord): LoopSnapshot {
   const hasCodeLine = record.work.branch !== "—";
   const hasHistory = record.history.length > 0;
   const hasAcceptance = Boolean(record.work.acceptance && !record.work.acceptance.includes("未登记"));
-  const units: LoopUnit[] = [
-    {
-      label: "需求 / 头脑风暴",
-      status: hasRequirements ? "evidence" : "untracked",
-      note: hasRequirements ? `${record.requirements.length} 条原文需求已登记；还需要拆成首轮工作单元。` : "当前对象没有可读取的需求原文。",
-    },
-    {
-      label: "架构 / 唯一路线",
-      status: hasDocuments ? "evidence" : "untracked",
-      note: hasDocuments ? `${record.documentPaths.length} 个文档入口可回看；不在此处复制文档正文。` : "当前对象没有单独登记架构或路线入口。",
-    },
-    {
-      label: "功能单元 / 依赖",
-      status: "untracked",
-      note: "当前静态快照尚未登记可计算的首轮工作单元和依赖。",
-    },
-    {
-      label: "分区实施 / 代码线",
-      status: hasCodeLine ? "active" : "untracked",
-      note: hasCodeLine ? `当前能看到 ${record.work.branch} 和对应工作树。` : "没有本地分支或工作树证据。",
-    },
-    {
-      label: "集成 / 首版验收",
-      status: hasAcceptance ? "waiting" : hasHistory ? "waiting" : "untracked",
-      note: hasAcceptance ? record.work.acceptance ?? "等待验收" : "当前快照不能证明首轮已经集成或通过用户验收。",
-    },
-  ];
-  const covered = units.filter((unit) => unit.status !== "untracked").length;
+  const units: LoopUnit[] = record.id === "card-projects"
+    ? [
+        {
+          label: "项目地图 / 单对象档案",
+          status: "verified",
+          registered: true,
+          note: "把全局、产品、卡片和平级工程分开；默认只展开一个对象的完整档案。",
+          evidence: "定向测试 · 地图与档案断言",
+        },
+        {
+          label: "首轮 / 后续迭代分开看",
+          status: "verified",
+          registered: true,
+          note: "One-shot 看路线和检查点；后续迭代看当前任务、分支和工作树。",
+          evidence: "定向测试 · Loop 切换断言",
+        },
+        {
+          label: "工程现场 / 冲突隔离",
+          status: "verified",
+          registered: true,
+          note: "按目录展示工作树、未提交现场、跨卡提交和隔离规则，不把混合提交拆成假历史。",
+          evidence: "定向测试 · 现场与冲突断言",
+        },
+        {
+          label: "用户验收 / 真实源接入",
+          status: "waiting",
+          registered: true,
+          note: "等待你验收阅读结构；GitHub、Linear、CI 仍保持快照边界，没有冒充实时同步。",
+          evidence: "本地 6/6 + build；等待用户验收",
+        },
+      ]
+    : [
+        {
+          label: "需求 / 头脑风暴",
+          status: hasRequirements ? "evidence" : "untracked",
+          registered: false,
+          note: hasRequirements ? `${record.requirements.length} 条原文需求已登记；还需要拆成首轮工作单元。` : "当前对象没有可读取的需求原文。",
+          evidence: hasRequirements ? "来源可回看；尚未登记功能单元" : "没有需求原文证据",
+        },
+        {
+          label: "架构 / 唯一路线",
+          status: hasDocuments ? "evidence" : "untracked",
+          registered: false,
+          note: hasDocuments ? `${record.documentPaths.length} 个文档入口可回看；不在此处复制文档正文。` : "当前对象没有单独登记架构或路线入口。",
+          evidence: hasDocuments ? "文档入口可回看；尚未登记功能单元" : "没有架构入口证据",
+        },
+        {
+          label: "功能单元 / 依赖",
+          status: "untracked",
+          registered: false,
+          note: "当前静态快照尚未登记可计算的首轮工作单元和依赖。",
+          evidence: "未登记验收证据",
+        },
+        {
+          label: "分区实施 / 代码线",
+          status: hasCodeLine ? "active" : "untracked",
+          registered: false,
+          note: hasCodeLine ? `当前能看到 ${record.work.branch} 和对应工作树。` : "没有本地分支或工作树证据。",
+          evidence: hasCodeLine ? "工程现场可回看；不等于单元完成" : "没有分支证据",
+        },
+        {
+          label: "集成 / 首版验收",
+          status: hasAcceptance ? "waiting" : hasHistory ? "waiting" : "untracked",
+          registered: false,
+          note: hasAcceptance ? record.work.acceptance ?? "等待验收" : "当前快照不能证明首轮已经集成或通过用户验收。",
+          evidence: hasAcceptance ? "有验收文字；尚未登记功能单元" : "没有验收证据",
+        },
+      ];
+  const registeredUnits = units.filter((unit) => unit.registered);
+  const verifiedUnits = registeredUnits.filter((unit) => unit.status === "verified");
+  const progress = registeredUnits.length > 0
+    ? `${verifiedUnits.length}/${registeredUnits.length} · ${Math.round((verifiedUnits.length / registeredUnits.length) * 100)}%`
+    : "首轮进度不计算";
+  const progressNote = registeredUnits.length > 0
+    ? `计算口径：有验收证据的已完成功能单元 ÷ 已登记功能单元。当前 ${verifiedUnits.length}/${registeredUnits.length}；Commit 数量不进入分母。`
+    : "当前对象没有登记可计算的路线图功能单元；阶段资料和 Commit 只作上下文，不冒充进度。";
   const latest = record.history[0];
   return {
-    modeLabel: record.work.workspacePath === "—" ? "工作模式待登记" : record.id === "dashboard" ? "后续迭代 · 当前主线" : "迭代现场可见",
+    modeLabel: record.work.workspacePath === "—" ? "工作模式待登记" : record.id === "card-projects" ? "工程总览卡 · 首轮路线" : record.id === "dashboard" ? "后续迭代 · 当前主线" : "迭代现场可见",
     modeTone: record.work.workspacePath === "—" ? "slate" : "amber",
     stage: record.work.task ?? "尚未登记当前工作单元",
-    progress: "首轮进度不计算",
-    progressNote: `${covered}/5 个阶段已有相关资料；这不是完成百分比。需要登记工作单元和验收条件后才可计算。`,
+    progress,
+    progressNote,
+    progressFormula: registeredUnits.length > 0 ? "已验收功能单元 / 已登记功能单元" : "等待登记路线图功能单元",
     checkpoint: latest ? `${latest.date} · ${latest.hash}` : "无本地检查点",
     checkpointSource: latest ? latest.title : "当前项目快照没有可回看的 Commit 检查点",
-    next: record.work.workspacePath === "—" ? "先登记该对象自己的工程入口和工作模式" : "先把当前任务拆成一个有完成条件的工作单元，再继续执行或交接",
+    next: record.id === "card-projects" ? "你先验收这张工程总览卡；通过后再接真实 GitHub / Linear / CI 读取" : record.work.workspacePath === "—" ? "先登记该对象自己的工程入口和工作模式" : "先把当前任务拆成一个有完成条件的工作单元，再继续执行或交接",
     units,
   };
 }
@@ -530,19 +582,19 @@ function LoopMonitor({ record }: { record: ObjectRecord }) {
         {view === "one-shot" ? (
           <div id="engineering-loop-one-shot" className="engineering-loop-panel" role="tabpanel">
             <div className="engineering-loop-summary">
-              <div><span>首轮进度</span><strong>{snapshot.progress}</strong><p>{snapshot.progressNote}</p></div>
+              <div><span>首轮进度</span><strong>{snapshot.progress}</strong><p>{snapshot.progressNote}</p><code className="engineering-loop-summary__formula">口径：{snapshot.progressFormula}</code></div>
               <div><span>最近检查点</span><code>{snapshot.checkpoint}</code><p>{snapshot.checkpointSource}</p></div>
               <div><span>当前下一步</span><strong>{snapshot.next}</strong><p>完成一个单元后再写一次交接，不按聊天消息频率刷新。</p></div>
             </div>
             <ol className="engineering-loop-roadmap">
               {snapshot.units.map((unit, index) => (
-                <li key={unit.label} data-status={unit.status}>
+                <li key={unit.label} data-status={unit.status} data-registered={unit.registered}>
                   <span className="engineering-loop-roadmap__index">{String(index + 1).padStart(2, "0")}</span>
-                  <div><div className="engineering-loop-roadmap__top"><strong>{unit.label}</strong><StatusMark tone={LOOP_STATUS_TONES[unit.status]}>{LOOP_STATUS_LABELS[unit.status]}</StatusMark></div><p>{unit.note}</p></div>
+                  <div><div className="engineering-loop-roadmap__top"><strong>{unit.label}</strong><StatusMark tone={LOOP_STATUS_TONES[unit.status]}>{LOOP_STATUS_LABELS[unit.status]}</StatusMark></div><p>{unit.note}</p><small className="engineering-loop-roadmap__evidence">证据：{unit.evidence}</small></div>
                 </li>
               ))}
             </ol>
-            <p className="engineering-loop-disclaimer"><ShieldCheck size={15} aria-hidden="true" />当前只是本地快照：没有登记完整首轮工作单元时，页面明确显示“未计算”，不会凭空给出百分比。</p>
+            <p className="engineering-loop-disclaimer"><ShieldCheck size={15} aria-hidden="true" />进度只统计“已登记功能单元”中有验收证据的单元；没有登记分母时显示“未计算”，不会用 Commit 数量代替完成度。</p>
           </div>
         ) : (
           <div id="engineering-loop-iteration" className="engineering-loop-panel" role="tabpanel">
@@ -1014,7 +1066,7 @@ export function EngineeringControlRoom() {
           <header id="engineering-overview" className="engineering-hero">
             <div className="engineering-hero__topline"><span className="engineering-eyebrow">ENGINEERING OVERVIEW CARD · SNAPSHOT {SNAPSHOT_META.date}</span><StatusMark tone="amber">{SNAPSHOT_META.currentStatus}</StatusMark></div>
             <div className="engineering-hero__title">
-              <div><h1>工程总览卡 <span>· 项目雷达的替代方案</span></h1><p>只回答四个工程问题：项目在哪个目录、现在在哪条代码线、是否隔离、接下来怎样验收。</p></div>
+              <div><h1>工程总览卡 <span>· 项目雷达</span></h1><p>只回答四个工程问题：项目在哪个目录、现在在哪条代码线、是否隔离、接下来怎样验收。</p></div>
               <div className="engineering-hero__head"><span>当前 HEAD</span><code>{SNAPSHOT_META.currentHead}</code><small>{SNAPSHOT_META.currentHeadTitle}</small></div>
             </div>
             <div className="engineering-summary-strip" aria-label="当前快照统计">
@@ -1065,7 +1117,7 @@ export function EngineeringControlRoom() {
            </section>
            <ConflictSection />
            <footer className="engineering-footer">
-             <div><span className="engineering-footer__mark"><Sparkles size={14} aria-hidden="true" /></span><strong>工程总览卡 v0.7</strong><span>地图优先 · 单对象档案 · 最小 Loop</span></div>
+            <div><span className="engineering-footer__mark"><Sparkles size={14} aria-hidden="true" /></span><strong>工程总览卡 v0.8</strong><span>地图优先 · 单对象档案 · 证据进度</span></div>
             <p>本页是只读工程总览；不替代项目 Markdown、Git，也不冒充尚未连接的 GitHub / Linear。</p>
           </footer>
         </main>
@@ -1073,3 +1125,4 @@ export function EngineeringControlRoom() {
     </div>
   );
 }
+

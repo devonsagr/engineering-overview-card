@@ -1,9 +1,9 @@
 {
   "name": "engineering-overview-card",
   "private": true,
-  "version": "0.7.0",
+  "version": "0.8.0",
   "type": "module",
-  "description": "个人 AI 仪表盘的独立工程总览卡预览",
+  "description": "个人 AI 仪表盘工程总览卡：项目地图、证据进度和工程现场预览",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

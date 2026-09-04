@@ -6,7 +6,7 @@ import { EngineeringControlRoom } from "./EngineeringControlRoom";
 it("uses one engineering overview card with a map-first reading order", () => {
   render(<EngineeringControlRoom />);
 
-  expect(screen.getByRole("heading", { name: "工程总览卡 · 项目雷达的替代方案", level: 1 })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "工程总览卡 · 项目雷达", level: 1 })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "先看项目在哪里，再看它现在怎么走", level: 2 })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "当前项目档案", level: 2 })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "首轮路线和后续迭代，分开看", level: 2 })).toBeInTheDocument();
@@ -67,7 +67,13 @@ it("separates the one-shot route from the real iteration snapshot", async () => 
   await user.click(within(loop).getByRole("tab", { name: "首轮构建" }));
   expect(within(loop).getByText("首轮进度不计算")).toBeInTheDocument();
   expect(within(loop).getByText("需求 / 头脑风暴")).toBeInTheDocument();
-  expect(within(loop).getByText(/页面明确显示“未计算”，不会凭空给出百分比/)).toBeInTheDocument();
+  expect(within(loop).getByText(/进度只统计“已登记功能单元”中有验收证据的单元/)).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: /项目雷达/ }));
+  expect(within(loop).getByText("3/4 · 75%")).toBeInTheDocument();
+  expect(within(loop).getByText(/有验收证据的已完成功能单元 ÷ 已登记功能单元/)).toBeInTheDocument();
+  expect(within(loop).getByText("项目地图 / 单对象档案")).toBeInTheDocument();
+  expect(within(loop).getByText("证据：定向测试 · 地图与档案断言")).toBeInTheDocument();
 });
 
 it("filters the map and selected archive without changing source labels, and supports the reading theme", async () => {
@@ -97,3 +103,4 @@ it("keeps mixed commits and isolation rules in the separate conflict view", () =
   expect(within(conflicts).getByText("一张卡 / 一个目标")).toBeInTheDocument();
   expect(within(conflicts).getByText("一条分支 / 一个工作树")).toBeInTheDocument();
 });
+
